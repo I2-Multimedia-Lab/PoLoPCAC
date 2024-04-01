@@ -80,17 +80,16 @@ def save_point_cloud_ycocg(pc, path):
     cloud = PyntCloud(pc)
     cloud.to_file(path)
 
-
 def read_point_cloud_reflactance(filepath):
     plydata = PlyData.read(filepath)
     pc = np.array(np.transpose(np.stack((plydata['vertex']['x'],plydata['vertex']['y'],plydata['vertex']['z'], plydata['vertex']['reflectance'])))).astype(np.float32)        
-    pc[:, 3:] = pc[:, 3:] / 100
     return pc
 
 
 def save_point_cloud_reflactance(pc, path, to_rgb=False):
 
     if to_rgb:
+        pc[:, 3:] = pc[:, 3:] / 100
         cmap = plt.get_cmap('jet')
         color = np.round(cmap(pc[:, 3])[:, :3] * 255)
         pc = np.hstack((pc[:, :3], color))
@@ -101,7 +100,7 @@ def save_point_cloud_reflactance(pc, path, to_rgb=False):
     else:
         scan = pc
         vertex = np.array(
-            [(scan[i,0], scan[i,1], scan[i,2], scan[i,3]*100) for i in range(scan.shape[0])],
+            [(scan[i,0], scan[i,1], scan[i,2], scan[i,3]) for i in range(scan.shape[0])],
             dtype=[
                 ("x", np.dtype("float32")), 
                 ("y", np.dtype("float32")), 
@@ -290,6 +289,20 @@ def get_cdf_ycocg(mu, sigma):
     sigma = sigma.unsqueeze(-1).repeat(1, 1, 512).clamp(1e-10, 1e10)
     gaussian = torch.distributions.laplace.Laplace(mu, sigma)
     flag = torch.arange(0, 512).to(sigma.device).view(1, 1, 512).repeat((M, d, 1))
+    cdf = gaussian.cdf(flag + 0.5)
+
+    spatial_dimensions = cdf.shape[:-1] + (1,)
+    zeros = torch.zeros(spatial_dimensions, dtype=cdf.dtype, device=cdf.device)
+    cdf_with_0 = torch.cat([zeros, cdf], dim=-1)
+    return cdf_with_0
+
+
+def get_cdf_reflactance(mu, sigma):
+    M, d = sigma.shape
+    mu = mu.unsqueeze(-1).repeat(1, 1, 128)
+    sigma = sigma.unsqueeze(-1).repeat(1, 1, 128).clamp(1e-10, 1e10)
+    gaussian = torch.distributions.laplace.Laplace(mu, sigma)
+    flag = torch.arange(0, 128).to(sigma.device).view(1, 1, 128).repeat((M, d, 1))
     cdf = gaussian.cdf(flag + 0.5)
 
     spatial_dimensions = cdf.shape[:-1] + (1,)

@@ -1,12 +1,12 @@
 import os
-import math
-from glob import glob
+import argparse
 import datetime
 
 import numpy as np
+from glob import glob
+
 import torch
 import torch.utils.data as Data
-from tqdm import tqdm
 from pytorch3d.ops.knn import _KNN, knn_gather, knn_points
 
 import kit
@@ -16,37 +16,46 @@ torch.cuda.manual_seed(11)
 torch.manual_seed(11)
 np.random.seed(11)
 
-TRAIN_GLOB = '/root/autodl-tmp/ShapeNet/ShapeNet_pc_01_2048p_colorful/train/train/*.ply'
 
-BATCH_SIZE = 8
-MAX_STEPS = 170000
-LEARNING_RATE = 0.0005
-LR_DECAY = 0.1
-LR_DECAY_STEPS = 50000
+parser = argparse.ArgumentParser(
+    prog='train.py',
+    description='Training from scratch.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+)
 
-MODEL_SAVE_FOLDER = f'./model/ycocg_3090trained/'
+parser.add_argument('--training_data', required=True, help='Training data (Glob pattern).')
+parser.add_argument('--model_save_folder', required=True, help='Directory where to save trained models.')
+
+parser.add_argument('--learning_rate', type=float, help='Learning rate.', default=0.0005)
+parser.add_argument('--batch_size', type=int, help='Batch size.', default=8)
+parser.add_argument('--lr_decay', type=float, help='Decays the learning rate to x times the original.', default=0.1)
+parser.add_argument('--lr_decay_steps', type=int, help='Decays the learning rate every x steps.', default=50000)
+parser.add_argument('--max_steps', type=int, help='Train up to this number of steps.', default=170000)
+
+parser.add_argument('--local_region', type=int, help='Neighbooring scope for context windows (i.e., K).', default=8)
+parser.add_argument('--granularity', type=int, help='Upper limit for each group (i.e., s*).', default=2**14)
+parser.add_argument('--init_ratio', type=int, help='The ratio for size of the very first group (i.e., alpha).', default=128)
+parser.add_argument('--expand_ratio', type=int, help='Expand ratio (i.e., r)', default=2)
+
+args = parser.parse_args()
 
 # CREATE MODEL SAVE PATH
-if not os.path.exists(MODEL_SAVE_FOLDER):
-    os.makedirs(MODEL_SAVE_FOLDER)
+if not os.path.exists(args.model_save_folder):
+    os.makedirs(args.model_save_folder)
 
-files = np.array(glob(TRAIN_GLOB, recursive=True))
+files = np.array(glob(args.training_data, recursive=True))
 np.random.shuffle(files)
 files = files[:]
 points = kit.read_point_clouds_ycocg(files)
 
-# points = torch.tensor(points)
-# print(f'Point train samples: {points.shape}, corrdinate range: [{points.min()}, {points.max()}]')
-
-# 把 dataset 放入 DataLoader
 loader = Data.DataLoader(
     dataset = points,
-    batch_size = BATCH_SIZE,
+    batch_size = args.batch_size,
     shuffle = True,
 )
 
-ae = Network(local_region=8, granularity=2**14, init_ratio=128, expand_ratio=2).cuda().train()
-optimizer = torch.optim.Adam(ae.parameters(), lr=LEARNING_RATE)
+ae = Network(local_region=args.local_region, granularity=args.granularity, init_ratio=args.init_ratio, expand_ratio=args.expand_ratio).cuda().train()
+optimizer = torch.optim.Adam(ae.parameters(), lr=args.learning_rate)
 
 bpps, losses = [], []
 global_step = 0
@@ -54,16 +63,13 @@ global_step = 0
 for epoch in range(1, 9999):
     print(datetime.datetime.now())
     for step, (batch_x) in enumerate(loader):
-        # batch_x = batch_x[:, :2048, :]
         B, N, _ = batch_x.shape
         batch_x = batch_x.cuda()
 
         optimizer.zero_grad()
 
         total_bits = ae(batch_x)
-
         bpp = total_bits / B / N
-
         loss = bpp
 
         loss.backward()
@@ -80,27 +86,18 @@ for epoch in range(1, 9999):
             bpps, losses = [], []
         
          # LEARNING RATE DECAY
-        if global_step % LR_DECAY_STEPS == 0:
-            LEARNING_RATE = LEARNING_RATE * LR_DECAY
+        if global_step % args.lr_decay_steps == 0:
+            args.learning_rate = args.learning_rate * args.lr_decay
             for g in optimizer.param_groups:
-                g['lr'] = LEARNING_RATE
-            print(f'Learning rate decay triggered at step {global_step}, LR is setting to{LEARNING_RATE}.')
+                g['lr'] = args.learning_rate
+            print(f'Learning rate decay triggered at step {global_step}, LR is setting to{args.learning_rate}.')
 
-        # SAVE AND VIEW
+        # SAVE MODEL
         if global_step % 500 == 0:
-            loss_value = loss.item()
-            # SAVE MODEL
-            torch.save(ae.state_dict(), MODEL_SAVE_FOLDER + f'ckpt.pt')
-            
-            # for i in range(1):
-            #     kit.save_point_cloud(pred_batch_x[0].clip(0, 1).detach().cpu().numpy(), 
-            #     f'./data/viewing_train/Step{global_step}_xhat_loss_{round(loss.item(), 5)}.ply', save_color=True)
-
-            #     kit.save_point_cloud(batch_x[0].clip(0, 1).detach().cpu().numpy(), 
-            #     f'./data/viewing_train/Step{global_step}_x_loss_{round(loss.item(), 5)}.ply', save_color=True)
+            torch.save(ae.state_dict(), args.model_save_folder + f'ckpt.pt')
         
-        if global_step >= MAX_STEPS:
+        if global_step >= args.max_steps:
             break
 
-    if global_step >= MAX_STEPS:
+    if global_step >= args.max_steps:
         break

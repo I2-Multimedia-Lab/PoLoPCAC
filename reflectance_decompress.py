@@ -20,8 +20,8 @@ np.random.seed(1)
 
 
 parser = argparse.ArgumentParser(
-    prog='decompress.py',
-    description='Decompress Point Cloud Attributes.',
+    prog='reflectance_decompress.py',
+    description='Decompress Point Cloud Reflectance Attributes.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 
@@ -43,6 +43,8 @@ if not os.path.exists(args.decompressed_path):
 
 comp_glob = os.path.join(args.compressed_path, '*.c.bin')
 files = np.array(glob(comp_glob, recursive=True))
+np.random.shuffle(files)
+files = files[:]
 
 net = Network(local_region=args.local_region, granularity=args.granularity, init_ratio=args.init_ratio, expand_ratio=args.expand_ratio)
 net.load_state_dict(torch.load(args.ckpt))
@@ -59,18 +61,14 @@ with torch.no_grad():
         fname = os.path.split(comp_c_f)[-1].split('.c.bin')[0]
         geo_f_path = os.path.join(args.compressed_path, fname+'.geo.bin')
 
-        # read geometry
         batch_x_geo = torch.tensor(np.fromfile(geo_f_path, dtype=np.float32)).view(1, -1, 3)
-        context_attr_base = np.array(np.fromfile(comp_c_f, dtype=np.uint8)).reshape(-1, 3)
-        
-        # convert base attr to ycocg
+        context_attr_base = torch.tensor(np.fromfile(comp_c_f, dtype=np.uint8)).view(1, -1, 1)
+
         torch.cuda.synchronize()
         TIME_STAMP = time.time()
-        context_attr_base = context_attr_base.astype(np.int16)
-        context_attr_base = kit.transformRGBToYCoCg(8, context_attr_base)
-        context_attr_base = torch.tensor(context_attr_base.astype(float)).view(1, -1, 3)
 
         _, N, _ = batch_x_geo.shape
+
         base_size = min(N//args.init_ratio, args.granularity)
         window_size = base_size
         cursor = base_size
@@ -78,49 +76,41 @@ with torch.no_grad():
         while cursor < N:
             window_size = min(window_size*args.expand_ratio, args.granularity)
             
-            # get context info
             context_geo = batch_x_geo[:, :cursor, :].cuda()
             target_geo = batch_x_geo[:, cursor:cursor+window_size, :].cuda()
             cursor += window_size
             
-            # rescale input attributes to [0, 1] in GPU
-            context_attr = context_attr_base.clone().float().cuda()
-            context_attr[:, :, 0] = context_attr[:, :, 0] / 255
-            context_attr[:, :, 1:] = context_attr[:, :, 1:] / 511
+            context_attr = context_attr_base.float().cuda() / 100
+            context_attr = context_attr.repeat((1, 1, 3))
 
-            # context window gathering
             _, idx, context_grouped_geo = knn_points(target_geo, context_geo, K=net.local_region, return_nn=True)
             context_grouped_attr = knn_gather(context_attr, idx)
 
-            # spatial normalization
             context_grouped_geo = context_grouped_geo - target_geo.view(1, -1, 1, 3)
             context_grouped_geo = kit.n_scale_ball(context_grouped_geo)
 
-            # network
             feature = net.pt(context_grouped_geo, context_grouped_attr)
             mu_sigma = net.mu_sigma_pred(feature)
             mu, sigma = mu_sigma[:, :, :3]+0.5, torch.exp(mu_sigma[:, :, 3:])
 
-            cdf = kit.get_cdf_ycocg(mu[0]*255, sigma[0]*32)
+            cdf = kit.get_cdf_reflactance(mu[0]*100, sigma[0]*32)
+            cdf = cdf[:, 0, :]
             comp_f = os.path.join(args.compressed_path, fname+f'.{i}.bin')
             with open(comp_f, 'rb') as fin:
                 byte_stream = fin.read()
-
-            # put _convert_to_int_and_normalize in GPU -> faster
-            # original version: decomp_attr = torchac.decode_float_cdf(cdf.cpu(), byte_stream)
+            # decomp_attr = torchac.decode_float_cdf(cdf.cpu(), byte_stream)
             decomp_attr = torchac.decode_int16_normalized_cdf(
                 kit._convert_to_int_and_normalize(cdf, True).cpu(),
                 byte_stream)
-
-            # concat current decoded group to context
-            context_attr_base = torch.cat((context_attr_base, decomp_attr.unsqueeze(0)), dim=1)
+            decomp_attr = decomp_attr.view(1, -1, 1)
+            context_attr_base = torch.cat((context_attr_base, decomp_attr), dim=1)
             i+=1
-
         decompressed_pc = torch.cat((batch_x_geo, context_attr_base), dim=-1)
         torch.cuda.synchronize()
         dec_times.append(time.time()-TIME_STAMP)
         decompressed_path = os.path.join(args.decompressed_path, fname+'.bin.ply')
-        kit.save_point_cloud_ycocg(decompressed_pc[0].detach().cpu().numpy(), path=decompressed_path)
+        kit.save_point_cloud_reflactance(decompressed_pc[0].detach().cpu().numpy(), path=decompressed_path)
+
 
 print('Max GPU Memory:', round(torch.cuda.max_memory_allocated(device=None)/1024/1024, 3), 'MB')
 print('ave dec time:', round(np.array(dec_times).mean(), 3), 's')
