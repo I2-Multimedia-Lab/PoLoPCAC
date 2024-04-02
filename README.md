@@ -29,7 +29,7 @@ The environment we use is as follows：
 - Pytorch3d 0.7.3
 - Torchac 0.9.3
 
-For the convenience of reproduction, We provide 3 different ways to create the environment:
+For the convenience of reproduction, we provide three different ways to help create the environment:
 
 #### Option 1: Using yml
 
