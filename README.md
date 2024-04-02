@@ -29,6 +29,24 @@ The environment we use is as follows：
 - Pytorch3d 0.7.3
 - Torchac 0.9.3
 
+For the convenience of reproduction, We provide 3 different ways to create the environment:
+
+#### Option 1: Using yml
+
+```
+conda env create -f=environment.yml
+```
+
+#### Option 2: Using .sh
+
+```
+source ./env_create.sh
+```
+
+#### Option 3: CodeWithGPU (AutoDL image)
+
+Docker image in [CodeWithGPU](https://www.codewithgpu.com/image) will be released soon.
+
 ## Data
 
 Example point clouds are saved in ``./data/`` with the following format:
@@ -60,7 +78,7 @@ python ./train.py \
     --model_save_folder='./retrained_model/'
 ```
 
-(We speculate that the PoLoPCAC might performs better when trained on samples with simple attribute patterns, such as Synthetic 2k-ShapeNet)
+(The PoLoPCAC might perform better when trained on non-voxelized samples, such as Synthetic 2k-ShapeNet)
 
 ## Compression
 
