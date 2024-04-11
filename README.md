@@ -45,7 +45,8 @@ source ./env_create.sh
 
 #### Option 3: CodeWithGPU (AutoDL image)
 
-Docker image in [CodeWithGPU](https://www.codewithgpu.com/image) will be released soon.
+🤗 [PoLoPCAC Image](https://www.codewithgpu.com/i/I2-Multimedia-Lab/PoLoPCAC/PoLoPCAC) have been uploaded at [CodeWithGPU](https://www.codewithgpu.com/image) community. \
+The required environment can be instantly built once you create an [AutoDL](https://www.autodl.com) container instance with our image being selected from the community image list.
 
 ## Data
 
