@@ -1,7 +1,7 @@
 
 # Efficient and Generic Point Model for Lossless Point Cloud Attribute Compression
 
-[![arXiv](https://img.shields.io/badge/Arxiv-XXXXXX-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/XXXXXX)
+[![arXiv](https://img.shields.io/badge/Arxiv-2404.06936-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/XXXXXX)
 [![GitHub issues](https://img.shields.io/github/issues/i2-multimedia-lab/polopcac?color=critical&label=Issues)](https://github.com/i2-multimedia-lab/polopcac/issues?q=is%3Aopen+is%3Aissue)
 [![GitHub closed issues](https://img.shields.io/github/issues-closed/i2-multimedia-lab/polopcac?color=success&label=Issues)](https://github.com/i2-multimedia-lab/polopcac/issues?q=is%3Aissue+is%3Aclosed) 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
@@ -139,7 +139,7 @@ python ./reflectance_decompress.py \
 @article{kang2024polopcac,
       title={Efficient and Generic Point Model for Lossless Point Cloud Attribute Compression}, 
       author={Kang You, Pan Gao, Zhan Ma},
-      journal={arXiv preprint arXiv:XXXXX},
+      journal={arXiv preprint arXiv:2404.06936},
       year={2024}
 }
 ```
